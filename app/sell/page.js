@@ -1,0 +1,172 @@
+"use client";
+
+import { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabaseClient';
+
+export default function SellPage() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // ดึงรายการสินค้าทั้งหมดมาไว้ใน dropdown
+  const fetchProducts = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setProducts(data);
+      setError('');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  // หาข้อมูลสินค้าที่กำลังเลือกอยู่ (ใช้คำนวณยอดรวม)
+  const selectedProduct = products.find((p) => p.id === selectedProductId);
+
+  const qtyNumber = parseInt(quantity, 10) || 0;
+  const totalPrice = selectedProduct ? selectedProduct.price * qtyNumber : 0;
+
+  const resetForm = () => {
+    setSelectedProductId('');
+    setQuantity('');
+  };
+
+  // กดปุ่ม "ขาย"
+  const handleSell = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!selectedProduct) {
+      setError('กรุณาเลือกสินค้า');
+      return;
+    }
+    if (qtyNumber <= 0) {
+      setError('กรุณากรอกจำนวนที่ถูกต้อง');
+      return;
+    }
+    // ตรวจสอบ stock ว่าเพียงพอหรือไม่
+    if (qtyNumber > selectedProduct.stock) {
+      setError(`สินค้าคงเหลือไม่พอ (คงเหลือ ${selectedProduct.stock} ${selectedProduct.unit})`);
+      return;
+    }
+
+    setSubmitting(true);
+
+    // 1) บันทึกรายการขายลงตาราง sales
+    const { error: saleError } = await supabase.from('sales').insert([
+      {
+        product_id: selectedProduct.id,
+        product_name: selectedProduct.name,
+        quantity: qtyNumber,
+        total_price: totalPrice,
+        sold_at: new Date().toISOString(),
+      },
+    ]);
+
+    if (saleError) {
+      setError(saleError.message);
+      setSubmitting(false);
+      return;
+    }
+
+    // 2) อัปเดต stock ในตาราง products ให้ลดลง
+    const newStock = selectedProduct.stock - qtyNumber;
+    const { error: updateError } = await supabase
+      .from('products')
+      .update({ stock: newStock })
+      .eq('id', selectedProduct.id);
+
+    if (updateError) {
+      setError(updateError.message);
+      setSubmitting(false);
+      return;
+    }
+
+    // สำเร็จ: แจ้งเตือน รีเซ็ตฟอร์ม และโหลดรายการสินค้าใหม่ (stock ล่าสุด)
+    setSuccess(`ขาย ${selectedProduct.name} จำนวน ${qtyNumber} ${selectedProduct.unit} สำเร็จ`);
+    resetForm();
+    await fetchProducts();
+    setSubmitting(false);
+  };
+
+  return (
+    <div>
+      <h1>ขายสินค้า</h1>
+
+      {error && (
+        <div className="card" style={{ color: '#dc2626', background: '#fef2f2' }}>
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="card" style={{ color: '#15803d', background: '#f0fdf4' }}>
+          {success}
+        </div>
+      )}
+
+      <div className="card">
+        {loading ? (
+          <p>กำลังโหลดรายการสินค้า...</p>
+        ) : (
+          <form onSubmit={handleSell} style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '360px' }}>
+            <div>
+              <label htmlFor="product">สินค้า</label>
+              <br />
+              <select
+                id="product"
+                value={selectedProductId}
+                onChange={(e) => setSelectedProductId(e.target.value)}
+                style={{ width: '100%' }}
+              >
+                <option value="">-- เลือกสินค้า --</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} - {Number(p.price).toFixed(2)} บาท (คงเหลือ {p.stock} {p.unit})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="quantity">จำนวน</label>
+              <br />
+              <input
+                id="quantity"
+                type="number"
+                min="1"
+                placeholder="จำนวนที่ขาย"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            {/* แสดงยอดรวมอัตโนมัติ */}
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
+              ยอดรวม: {totalPrice.toFixed(2)} บาท
+            </div>
+
+            <button type="submit" disabled={submitting}>
+              {submitting ? 'กำลังบันทึก...' : 'ขาย'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
