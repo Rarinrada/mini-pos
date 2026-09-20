@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
 // === Telegram config (อ่านจาก Environment Variables) ===
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TELEGRAM_BOT_TOKEN = process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID;
 
 // === ฟังก์ชันส่งข้อความแจ้งเตือนเข้า Telegram ===
 // ทำงานแบบ async/try-catch เพื่อไม่ให้ error จาก Telegram กระทบระบบขายหลัก
